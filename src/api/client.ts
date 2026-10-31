@@ -420,5 +420,115 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(features)
     });
+  },
+
+  // ----------------------------------------------------
+  // KL UNIVERSITY ERP MODULE APIS
+  // ----------------------------------------------------
+  async getErpRegistrations(studentId: string): Promise<any> {
+    return request(`/api/erp/registration/courses/${studentId}`);
+  },
+
+  async registerCourse(payload: { studentId: string; subjectId: string; registrationType: string }): Promise<any> {
+    return request('/api/erp/registration/register', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async getErpAttendance(studentId: string): Promise<any> {
+    return request(`/api/erp/attendance/register/${studentId}`);
+  },
+
+  async getErpCareerPreferences(studentId: string): Promise<any> {
+    return request(`/api/erp/career/preferences/${studentId}`);
+  },
+
+  async saveErpCareerPreferences(payload: any): Promise<any> {
+    return request('/api/erp/career/preferences', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async getErpCoursesMaterials(subjectId?: string): Promise<any> {
+    const q = subjectId ? `?subjectId=${subjectId}` : '';
+    return request(`/api/erp/courses/materials${q}`);
+  },
+
+  async submitErpCourseFeedback(payload: any): Promise<any> {
+    return request('/api/erp/courses/feedback', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async getErpCrtProgress(studentId: string): Promise<any> {
+    return request(`/api/erp/crt/progress/${studentId}`);
+  },
+
+  async getErpCounselling(studentId: string): Promise<any> {
+    return request(`/api/erp/counselling/${studentId}`);
+  },
+
+  async scheduleErpCounselling(payload: any): Promise<any> {
+    return request('/api/erp/counselling/schedule', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async getErpClubs(): Promise<any> {
+    return request('/api/erp/clubs');
+  },
+
+  async getErpClubMembership(studentId: string): Promise<any> {
+    return request(`/api/erp/clubs/membership/${studentId}`);
+  },
+
+  async getErpFees(studentId: string): Promise<any> {
+    return request(`/api/erp/fees/${studentId}`);
+  },
+
+  async payErpFee(payload: { studentId: string; feeType: string; amount: number; paymentMode?: string }): Promise<any> {
+    return request('/api/erp/fees/pay', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async getErpHostel(studentId: string): Promise<any> {
+    return request(`/api/erp/hostel/${studentId}`);
+  },
+
+  async submitErpHostelComplaint(payload: any): Promise<any> {
+    return request('/api/erp/hostel/complaint', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async getErpLibrary(studentId: string, search?: string): Promise<any> {
+    const q = search ? `?search=${encodeURIComponent(search)}` : '';
+    return request(`/api/erp/library/records/${studentId}${q}`);
+  },
+
+  async getErpNoDue(studentId: string): Promise<any> {
+    return request(`/api/erp/nodue/${studentId}`);
+  },
+
+  async getErpDocumentRequests(studentId: string): Promise<any> {
+    return request(`/api/erp/documents/requests/${studentId}`);
+  },
+
+  async submitErpDocumentRequest(payload: any): Promise<any> {
+    return request('/api/erp/documents/request', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async getErpHallTicket(studentId: string): Promise<any> {
+    return request(`/api/erp/hall-ticket/${studentId}`);
   }
 };

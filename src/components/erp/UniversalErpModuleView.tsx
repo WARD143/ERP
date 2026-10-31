@@ -37,79 +37,38 @@ export const UniversalErpModuleView: React.FC<UniversalErpModuleViewProps> = ({ 
     setLoading(true);
     setSuccessMsg('');
 
-    // Fetch corresponding real ERP backend endpoints
+    // Fetch corresponding real ERP backend endpoints via centralized api client
     const loadModuleData = async () => {
       try {
         if (tabId.startsWith('reg-')) {
-          const res = await fetch(`/api/erp/registration/courses/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpRegistrations(studentId));
         } else if (tabId.startsWith('att-')) {
-          const res = await fetch(`/api/erp/attendance/register/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpAttendance(studentId));
         } else if (tabId.startsWith('fees-')) {
-          const res = await fetch(`/api/erp/fees/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpFees(studentId));
         } else if (tabId.startsWith('hostel-')) {
-          const res = await fetch(`/api/erp/hostel/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpHostel(studentId));
         } else if (tabId.startsWith('lib-')) {
-          const res = await fetch(`/api/erp/library/records/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpLibrary(studentId));
         } else if (tabId.startsWith('career-')) {
-          const res = await fetch(`/api/erp/career/preferences/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpCareerPreferences(studentId));
         } else if (tabId.startsWith('crt-')) {
-          const res = await fetch(`/api/erp/crt/progress/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpCrtProgress(studentId));
         } else if (tabId.startsWith('counselling-')) {
-          const res = await fetch(`/api/erp/counselling/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpCounselling(studentId));
         } else if (tabId.startsWith('clubs-')) {
-          const res = await fetch(`/api/erp/clubs`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          const memberRes = await fetch(`/api/erp/clubs/membership/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData({ ...(await res.json()), ...(await memberRes.json()) });
+          const clubsData = await api.getErpClubs();
+          const memberData = await api.getErpClubMembership(studentId);
+          setData({ ...clubsData, ...memberData });
         } else if (tabId.startsWith('nodue-')) {
-          const res = await fetch(`/api/erp/nodue/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpNoDue(studentId));
         } else if (tabId.startsWith('reg-bonafide') || tabId.startsWith('reg-transcript') || tabId.startsWith('reg-certificates')) {
-          const res = await fetch(`/api/erp/documents/requests/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpDocumentRequests(studentId));
         } else if (tabId.startsWith('ht-') || tabId === 'exam-hallticket') {
-          const res = await fetch(`/api/erp/hall-ticket/${studentId}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpHallTicket(studentId));
         } else if (tabId.startsWith('courses-')) {
-          const res = await fetch(`/api/erp/courses/materials`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('aktera_token')}` }
-          });
-          setData(await res.json());
+          setData(await api.getErpCoursesMaterials());
         } else {
-          // General mock/real bridge
           setData({ status: 'ACTIVE', timestamp: new Date().toISOString() });
         }
       } catch (err) {
@@ -437,3 +396,4 @@ export const UniversalErpModuleView: React.FC<UniversalErpModuleViewProps> = ({ 
     </div>
   );
 };
+
