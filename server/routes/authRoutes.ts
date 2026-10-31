@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../../db/database.js';
 import { hashPassword, seedDatabase } from '../../db/seed.js';
-import { generateToken, authenticateToken, AuthenticatedRequest } from '../auth.js';
+import { generateToken, authenticateToken, AuthenticatedRequest, requireRole } from '../auth.js';
 import { evaluateAllStudentsRisk } from '../riskEngine.js';
 
 export const authRouter = Router();
@@ -182,7 +182,7 @@ authRouter.get('/demo-accounts', async (_req: Request, res: Response) => {
 });
 
 // Database Seed / Reset
-authRouter.post('/seed-reset', async (_req: Request, res: Response) => {
+authRouter.post('/seed-reset', authenticateToken, requireRole(['ADMIN']), async (_req: Request, res: Response) => {
   try {
     await seedDatabase(true);
     await evaluateAllStudentsRisk();

@@ -1,12 +1,26 @@
 import { Router, Response } from 'express';
-import { authenticateToken, AuthenticatedRequest } from '../auth.js';
+import { authenticateToken, AuthenticatedRequest, enforceStudentSelfAccess, enforceParentAccess } from '../auth.js';
 import { query, queryOne } from '../../db/database.js';
 import { calculateStudentAnalytics } from '../analytics.js';
 
 export const erpRoutes = Router();
 
+// Protect student-specific ERP documents according to the signed-in user's relationship.
+function authorizeErpStudentAccess(req: AuthenticatedRequest, res: Response, next: any) {
+  if (req.user?.role === 'PARENT') {
+    return enforceParentAccess(req, res, next);
+  }
+  if (req.user?.role === 'STUDENT') {
+    return enforceStudentSelfAccess(req, res, next);
+  }
+  if (req.user?.role === 'ADMIN' || req.user?.role === 'FACULTY') {
+    return next();
+  }
+  return res.status(403).json({ error: 'You are not authorized to access this student record.' });
+}
+
 // 1. Hall Ticket / Examination Eligibility Service
-erpRoutes.get('/hall-ticket/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+erpRoutes.get('/hall-ticket/:studentId', authenticateToken, authorizeErpStudentAccess, async (req: AuthenticatedRequest, res: Response) => {
   const { studentId } = req.params;
   const analytics = await calculateStudentAnalytics(studentId);
 
@@ -62,7 +76,7 @@ erpRoutes.get('/hall-ticket/:studentId', authenticateToken, async (req: Authenti
 });
 
 // 2. Official Provisional Grade Card / Transcript Service
-erpRoutes.get('/grade-card/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+erpRoutes.get('/grade-card/:studentId', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
   const { studentId } = req.params;
   const analytics = await calculateStudentAnalytics(studentId);
 
@@ -195,7 +209,7 @@ erpRoutes.get('/circulars', authenticateToken, async (_req: AuthenticatedRequest
 });
 
 // 5. University Fee & Scholarship Clearance Status
-erpRoutes.get('/fee-clearance/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+erpRoutes.get('/fee-clearance/:studentId', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
   const { studentId } = req.params;
 
   return res.json({
