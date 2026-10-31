@@ -16,6 +16,7 @@ import { erpRoutes } from './server/routes/erpRoutes.js';
 import { datasetRouter } from './server/routes/datasetRoutes.js';
 import { parentRouter } from './server/routes/parentRoutes.js';
 import { reportRouter } from './server/routes/reportRoutes.js';
+import { ouladRouter } from './server/routes/ouladRoutes.js';
 
 dotenv.config();
 
@@ -50,6 +51,7 @@ async function startServer() {
   app.use('/api/dataset', datasetRouter);
   app.use('/api/parent', parentRouter);
   app.use('/api/reports', reportRouter);
+  app.use('/api/oulad', ouladRouter);
 
   // Health check endpoint
   app.get('/api/health', (_req: Request, res: Response) => {

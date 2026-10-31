@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+*.sqlite.bak
+*.sqlite.backup
+*.bak
+data/
+open+university+learning+analytics+dataset/
+*.zip

@@ -181,8 +181,16 @@ authRouter.get('/demo-accounts', async (_req: Request, res: Response) => {
   return res.json({ accounts });
 });
 
-// Database Seed / Reset
-authRouter.post('/seed-reset', async (_req: Request, res: Response) => {
+// Database Seed / Reset - Strictly restricted to verified Administrators in non-production environments
+authRouter.post('/seed-reset', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Database reset endpoint is permanently disabled in production mode.' });
+  }
+
+  if (req.user?.role !== 'ADMIN') {
+    return res.status(403).json({ error: 'Access denied: Only authorized administrators can trigger database reset.' });
+  }
+
   try {
     await seedDatabase(true);
     await evaluateAllStudentsRisk();

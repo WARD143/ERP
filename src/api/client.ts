@@ -530,5 +530,43 @@ export const api = {
 
   async getErpHallTicket(studentId: string): Promise<any> {
     return request(`/api/erp/hall-ticket/${studentId}`);
+  },
+
+  // OULAD Research Dataset APIs
+  async getOuladSummary(): Promise<any> {
+    return request('/api/oulad/summary');
+  },
+
+  async getOuladStudents(params: { page?: number; limit?: number; module?: string; presentation?: string; result?: string; search?: string } = {}): Promise<any> {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set('page', String(params.page));
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.module) searchParams.set('module', params.module);
+    if (params.presentation) searchParams.set('presentation', params.presentation);
+    if (params.result) searchParams.set('result', params.result);
+    if (params.search) searchParams.set('search', params.search);
+    const qs = searchParams.toString();
+    return request(`/api/oulad/students${qs ? '?' + qs : ''}`);
+  },
+
+  async getOuladStudent360(id: string | number): Promise<any> {
+    return request(`/api/oulad/students/${id}`);
+  },
+
+  async getOuladCourses(): Promise<any> {
+    return request('/api/oulad/courses');
+  },
+
+  async getOuladAssessments(module?: string): Promise<any> {
+    const q = module ? `?module=${encodeURIComponent(module)}` : '';
+    return request(`/api/oulad/assessments${q}`);
+  },
+
+  async getOuladEngagement(): Promise<any> {
+    return request('/api/oulad/engagement');
+  },
+
+  async getOuladImportStatus(): Promise<any> {
+    return request('/api/oulad/import-status');
   }
 };

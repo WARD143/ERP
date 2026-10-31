@@ -1,9 +1,19 @@
 import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
-import { queryOne } from '../db/database.js';
-import { hashPassword } from '../db/seed.js';
+import { queryOne, execute } from '../db/database.js';
 
-const JWT_SECRET = process.env.AUTH_SECRET || 'edupulse_academic_secret_jwt_2026';
+// Enforce environment AUTH_SECRET without insecure hardcoded fallbacks
+function getAuthSecret(): string {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret || secret.trim().length < 16) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('FATAL SECURITY ERROR: AUTH_SECRET must be configured with at least 16 characters in production.');
+    }
+    // Safe deterministic development secret if unconfigured in local dev
+    return 'aktera_dev_secret_key_9f83b271d46e10ac25048cb12e39a7b6';
+  }
+  return secret.trim();
+}
 
 export interface AuthenticatedUser {
   id: string;
@@ -22,6 +32,7 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export function generateToken(user: AuthenticatedUser): string {
+  const secret = getAuthSecret();
   const payload = JSON.stringify({
     id: user.id,
     email: user.email,
@@ -29,10 +40,10 @@ export function generateToken(user: AuthenticatedUser): string {
     studentId: user.studentId,
     facultyId: user.facultyId,
     parentId: user.parentId,
-    exp: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days expiration
   });
 
-  const hmac = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('hex');
+  const hmac = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   return Buffer.from(payload).toString('base64url') + '.' + hmac;
 }
 
@@ -40,15 +51,22 @@ export function verifyToken(token: string): any | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 2) return null;
-    const payloadStr = Buffer.from(parts[0], 'base64url').toString('utf8');
-    const expectedHmac = crypto.createHmac('sha256', JWT_SECRET).update(payloadStr).digest('hex');
 
-    if (crypto.timingSafeEqual(Buffer.from(parts[1]), Buffer.from(expectedHmac))) {
-      const payload = JSON.parse(payloadStr);
-      if (payload.exp && payload.exp < Date.now()) return null;
-      return payload;
-    }
-    return null;
+    const secret = getAuthSecret();
+    const payloadStr = Buffer.from(parts[0], 'base64url').toString('utf8');
+    const expectedHmac = crypto.createHmac('sha256', secret).update(payloadStr).digest('hex');
+
+    const providedBuf = Buffer.from(parts[1], 'hex');
+    const expectedBuf = Buffer.from(expectedHmac, 'hex');
+
+    // Constant-time comparison with length matching validation
+    if (providedBuf.length !== expectedBuf.length) return null;
+    if (!crypto.timingSafeEqual(providedBuf, expectedBuf)) return null;
+
+    const payload = JSON.parse(payloadStr);
+    if (payload.exp && payload.exp < Date.now()) return null;
+
+    return payload;
   } catch (err) {
     return null;
   }
@@ -59,15 +77,15 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
   if (!token) {
-    return res.status(401).json({ error: 'Authentication required. Please log in.' });
+    return res.status(401).json({ error: 'Authentication required. Missing session token.' });
   }
 
   const payload = verifyToken(token);
   if (!payload) {
-    return res.status(401).json({ error: 'Invalid or expired session token.' });
+    return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });
   }
 
-  // Fetch fresh user record
+  // Fetch verified user record from database
   const user = await queryOne('SELECT id, email, role, name, department, roll_number FROM users WHERE id = ?', [payload.id]);
   if (!user) {
     return res.status(401).json({ error: 'User account not found.' });
@@ -85,7 +103,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     facultyId = fac?.id;
   } else if (user.role === 'PARENT') {
     const par = await queryOne('SELECT id FROM parents WHERE user_id = ?', [user.id]);
-    parentId = par?.id;
+    parentId = par?.id || user.id;
   }
 
   req.user = {
@@ -109,72 +127,97 @@ export function requireRole(allowedRoles: Array<'STUDENT' | 'FACULTY' | 'ADMIN' 
       return res.status(401).json({ error: 'Authentication required.' });
     }
     if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ error: `Access denied. Requires one of: ${allowedRoles.join(', ')}` });
+      return res.status(403).json({ error: `Access denied. Endpoint requires one of: ${allowedRoles.join(', ')}` });
     }
     next();
   };
 }
 
-export function enforceStudentSelfAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+/**
+ * Strict Data Ownership: Resolves target studentId and strictly checks:
+ * - Student: CAN ONLY access their own server-derived studentId (cannot spoof via URL/body)
+ * - Parent: CAN ONLY access students linked in parent_students
+ * - Faculty: CAN ONLY access students assigned to them or their courses
+ * - Admin: Full access with audit logging
+ */
+export async function enforceStudentOwnership(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.user) {
     return res.status(401).json({ error: 'Authentication required.' });
   }
 
-  // Administrators and Faculty can access any student's data
-  if (req.user.role === 'ADMIN' || req.user.role === 'FACULTY') {
+  // Extract requested studentId from route params, query, or body
+  let targetStudentId = req.params.studentId || req.query.studentId || req.body.studentId;
+
+  // If student requests an endpoint with no studentId specified, default to their own verified studentId
+  if (req.user.role === 'STUDENT') {
+    if (!targetStudentId) {
+      targetStudentId = req.user.studentId;
+      req.params.studentId = targetStudentId;
+    } else if (targetStudentId !== req.user.studentId) {
+      await logSecurityAudit(req.user.id, 'UNAUTHORIZED_IDOR_ATTEMPT', req.originalUrl, req.ip, 403);
+      return res.status(403).json({
+        error: 'Data Privacy Violation: You are not authorized to view or modify another student’s records.'
+      });
+    }
     return next();
   }
 
-  // Students can strictly only access their own studentId
-  const requestedStudentId = req.params.studentId || req.query.studentId || req.body.studentId;
-  if (requestedStudentId && req.user.studentId !== requestedStudentId) {
-    return res.status(403).json({
-      error: 'Data Privacy Violation: You are not authorized to view another student’s academic records.'
-    });
+  // Parent Role: Enforce linked parent_students relationship
+  if (req.user.role === 'PARENT') {
+    if (!targetStudentId) {
+      return res.status(400).json({ error: 'Target student ID is required for parent access.' });
+    }
+
+    const isLinked = await queryOne(`
+      SELECT id FROM parent_students 
+      WHERE (parent_user_id = ? OR parent_user_id = ?) 
+        AND (student_id = ? OR student_id = (SELECT id FROM students WHERE roll_number = ?))
+    `, [req.user.id, req.user.parentId || '', targetStudentId, targetStudentId]);
+
+    if (!isLinked) {
+      await logSecurityAudit(req.user.id, 'UNAUTHORIZED_PARENT_ACCESS', req.originalUrl, req.ip, 403);
+      return res.status(403).json({ error: 'Access denied. You do not have authorization for this student record.' });
+    }
+    return next();
   }
 
-  next();
+  // Faculty Role: Check mentor assignment or subject class scope
+  if (req.user.role === 'FACULTY') {
+    if (!targetStudentId) {
+      return next(); // General faculty dashboard endpoints
+    }
+
+    const isAssigned = await queryOne(`
+      SELECT s.id FROM students s
+      WHERE s.id = ? AND (
+        s.mentor_faculty_id = ? OR
+        EXISTS (SELECT 1 FROM subjects sub WHERE sub.faculty_id = ? AND sub.semester_id = s.current_semester_id)
+      )
+    `, [targetStudentId, req.user.facultyId || '', req.user.facultyId || '']);
+
+    if (!isAssigned) {
+      await logSecurityAudit(req.user.id, 'UNAUTHORIZED_FACULTY_ACCESS', req.originalUrl, req.ip, 403);
+      return res.status(403).json({ error: 'Access denied: Student is outside your assigned mentoring or course roster.' });
+    }
+    return next();
+  }
+
+  // Admin Role: Full authorization
+  if (req.user.role === 'ADMIN') {
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Unauthorized role access.' });
 }
 
-export async function enforceMentorAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  if (!req.user || req.user.role !== 'FACULTY') {
-    return res.status(403).json({ error: 'Access denied. Mentor privileges required.' });
+export async function logSecurityAudit(userId: string | undefined, action: string, endpoint: string, ip: string | undefined, statusCode: number) {
+  try {
+    const id = `audit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    await execute(`
+      INSERT INTO audit_logs (id, user_id, action, endpoint, ip_address, status_code)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [id, userId || 'ANONYMOUS', action, endpoint, ip || '127.0.0.1', statusCode]);
+  } catch (err) {
+    // Non-blocking error for audit logging
   }
-
-  if (!req.user.facultyId) {
-    return res.status(403).json({ error: 'Access denied. Mentor profile not found.' });
-  }
-
-  const requestedStudentId = req.params.studentId || req.query.studentId || req.body.studentId;
-  if (requestedStudentId) {
-    const assignment = await queryOne('SELECT id FROM mentor_students WHERE mentor_id = ? AND student_id = ? AND status = ?', [req.user.facultyId, requestedStudentId, 'ACTIVE']);
-    if (!assignment) {
-      // Create an audit log for unauthorized access attempt
-      await queryOne('INSERT INTO audit_logs (id, actor, action, target) VALUES (?, ?, ?, ?)', [
-        `audit_${Date.now()}`, req.user.email, 'UNAUTHORIZED_MENTOR_ACCESS', requestedStudentId
-      ]);
-      return res.status(403).json({ error: 'Student is not assigned to you. Access denied.' });
-    }
-  }
-
-  next();
-}
-
-export async function enforceParentAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  if (!req.user || req.user.role !== 'PARENT') {
-    return res.status(403).json({ error: 'Access denied. Parent privileges required.' });
-  }
-
-  const requestedStudentId = req.params.studentId || req.query.studentId || req.body.studentId;
-  if (requestedStudentId) {
-    const link = await queryOne('SELECT id FROM parent_students WHERE parent_id = ? AND student_id = ?', [req.user.parentId, requestedStudentId]);
-    if (!link) {
-      await queryOne('INSERT INTO audit_logs (id, actor, action, target) VALUES (?, ?, ?, ?)', [
-        `audit_${Date.now()}`, req.user.email, 'UNAUTHORIZED_PARENT_ACCESS', requestedStudentId
-      ]);
-      return res.status(403).json({ error: 'You are not authorized to view this student.' });
-    }
-  }
-
-  next();
 }

@@ -38,6 +38,7 @@ import { CohortAnalytics } from './pages/admin/CohortAnalytics';
 import { RiskThresholdConfig } from './pages/admin/RiskThresholdConfig';
 import { DataManagement } from './pages/admin/DataManagement';
 import { UCIDatasetExplorer } from './pages/dataset/UCIDatasetExplorer';
+import { OuladAnalyticsDashboard } from './pages/dataset/OuladAnalyticsDashboard';
 
 // Parent Pages
 import { ParentDashboard } from './pages/parent/ParentDashboard';
@@ -205,8 +206,13 @@ const AppContent: React.FC = () => {
             <UCIDatasetExplorer />
           )}
 
+          {/* OULAD RESEARCH DATASET ANALYTICS */}
+          {currentTab === 'oulad-analytics' && (
+            <OuladAnalyticsDashboard />
+          )}
+
           {/* STUDENT PORTAL VIEWS */}
-          {user.role === 'STUDENT' && currentTab !== 'uci-dataset' && (
+          {user.role === 'STUDENT' && currentTab !== 'uci-dataset' && currentTab !== 'oulad-analytics' && (
             <>
               {/* Check if current tab is one of the 20 new KL University ERP modules */}
               {!isBuiltinStudentModule ? (

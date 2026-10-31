@@ -1,12 +1,12 @@
 import { Router, Response } from 'express';
-import { authenticateToken, AuthenticatedRequest, enforceStudentSelfAccess } from '../auth.js';
+import { authenticateToken, AuthenticatedRequest, enforceStudentOwnership } from '../auth.js';
 import { calculateStudentAnalytics } from '../analytics.js';
 import { evaluateStudentRisk } from '../riskEngine.js';
 import { GoogleGenAI } from '@google/genai';
 
 export const aiRouter = Router();
 
-aiRouter.post('/insights/:studentId', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
+aiRouter.post('/insights/:studentId', authenticateToken, enforceStudentOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const { studentId } = req.params;
   const analytics = await calculateStudentAnalytics(studentId);
   const risk = await evaluateStudentRisk(studentId);

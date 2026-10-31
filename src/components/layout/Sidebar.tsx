@@ -351,9 +351,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, alert
     },
     {
       id: 'fac-ml',
-      title: 'AI EXPLORER',
+      title: 'RESEARCH & BENCHMARKS',
       icon: Database,
       submodules: [
+        { id: 'oulad-analytics', label: 'OULAD Dataset (32.5k Records)' },
         { id: 'uci-dataset', label: 'UCI Dataset & ML Explorer' }
       ]
     }
@@ -370,6 +371,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, alert
         { id: 'cohort-analytics', label: 'Cohort Performance' },
         { id: 'risk-config', label: 'Risk Sensitivity Thresholds' },
         { id: 'data-management', label: 'Data Input & CSV Sync' },
+        { id: 'oulad-analytics', label: 'OULAD Benchmark (32,593)' },
         { id: 'uci-dataset', label: 'UCI Dataset & ML Engine' }
       ]
     }

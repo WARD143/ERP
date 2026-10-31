@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { authenticateToken, AuthenticatedRequest, enforceStudentSelfAccess } from '../auth.js';
+import { authenticateToken, AuthenticatedRequest, enforceStudentOwnership } from '../auth.js';
 import { calculateStudentAnalytics } from '../analytics.js';
 import { evaluateStudentRisk } from '../riskEngine.js';
 import { generateStudentRecommendations } from '../recommendations.js';
@@ -35,24 +35,24 @@ studentRouter.get('/overview', authenticateToken, async (req: AuthenticatedReque
 });
 
 // Specific student analytics with privacy guard
-studentRouter.get('/:studentId/analytics', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
+studentRouter.get('/:studentId/analytics', authenticateToken, enforceStudentOwnership, async (req: AuthenticatedRequest, res: Response) => {
+  const studentId = req.params.studentId || req.user!.studentId!;
   const analytics = await calculateStudentAnalytics(studentId);
   if (!analytics) return res.status(404).json({ error: 'Student analytics not found.' });
   return res.json({ analytics });
 });
 
 // Risk status
-studentRouter.get('/:studentId/risk', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
+studentRouter.get('/:studentId/risk', authenticateToken, enforceStudentOwnership, async (req: AuthenticatedRequest, res: Response) => {
+  const studentId = req.params.studentId || req.user!.studentId!;
   const risk = await evaluateStudentRisk(studentId);
   if (!risk) return res.status(404).json({ error: 'Risk assessment not found.' });
   return res.json({ risk });
 });
 
 // Alerts
-studentRouter.get('/:studentId/alerts', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
+studentRouter.get('/:studentId/alerts', authenticateToken, enforceStudentOwnership, async (req: AuthenticatedRequest, res: Response) => {
+  const studentId = req.params.studentId || req.user!.studentId!;
   const alerts = await query(`
     SELECT * FROM alerts WHERE student_id = ? ORDER BY created_at DESC
   `, [studentId]);
@@ -60,22 +60,22 @@ studentRouter.get('/:studentId/alerts', authenticateToken, enforceStudentSelfAcc
 });
 
 // Recommendations
-studentRouter.get('/:studentId/recommendations', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
+studentRouter.get('/:studentId/recommendations', authenticateToken, enforceStudentOwnership, async (req: AuthenticatedRequest, res: Response) => {
+  const studentId = req.params.studentId || req.user!.studentId!;
   const recommendations = await generateStudentRecommendations(studentId);
   return res.json({ recommendations });
 });
 
 // Forecasting
-studentRouter.get('/:studentId/forecast', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
+studentRouter.get('/:studentId/forecast', authenticateToken, enforceStudentOwnership, async (req: AuthenticatedRequest, res: Response) => {
+  const studentId = req.params.studentId || req.user!.studentId!;
   const forecast = await generateStudentForecast(studentId);
   return res.json({ forecast });
 });
 
 // What-If Simulation
-studentRouter.post('/:studentId/what-if', authenticateToken, enforceStudentSelfAccess, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
+studentRouter.post('/:studentId/what-if', authenticateToken, enforceStudentOwnership, async (req: AuthenticatedRequest, res: Response) => {
+  const studentId = req.params.studentId || req.user!.studentId!;
   const {
     hypotheticalEndTermPercentage,
     targetSubjectCode,

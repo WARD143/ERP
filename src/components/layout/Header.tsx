@@ -121,12 +121,27 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onNavigate
               </div>
             </div>
 
-            {/* Academic Session Pill */}
+            {/* Academic Session & Dataset Source Switcher */}
             <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 text-xs font-medium border border-slate-200 dark:border-slate-700/60">
               <Calendar className="w-3.5 h-3.5 text-indigo-500" />
               <span>A.Y. 2026–2027</span>
               <span className="text-slate-300 dark:text-slate-600">·</span>
-              <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Semester VI (CSE)</span>
+              <button
+                onClick={() => onNavigateTab?.('student-dashboard')}
+                className="hover:text-indigo-400 font-semibold transition"
+                title="Active Production Dataset"
+              >
+                AKTERA Core
+              </button>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <button
+                onClick={() => onNavigateTab?.('oulad-analytics')}
+                className="inline-flex items-center gap-1 text-xs font-bold text-amber-500 dark:text-amber-400 hover:text-amber-300 transition"
+                title="Switch to Open University Benchmark Dataset (32,593 records)"
+              >
+                <Database className="w-3 h-3" />
+                <span>OULAD (32.5k)</span>
+              </button>
             </div>
           </div>
 
