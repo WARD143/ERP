@@ -1,0 +1,6 @@
+{
+  "name": "EduPulse AI — Student Performance Analytics & Early Warning System",
+  "description": "AI-driven student performance analytics, risk classification, early warning signals, performance forecasting, and what-if simulation platform for CSE A.Y. 2026–2027.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
