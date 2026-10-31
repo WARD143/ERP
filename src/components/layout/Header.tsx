@@ -27,7 +27,8 @@ import {
   Command,
   HelpCircle,
   ShieldCheck,
-  Layers
+  Layers,
+  Database
 } from 'lucide-react';
 import { api } from '../../api/client';
 
