@@ -1,211 +1,473 @@
 import { Router, Response } from 'express';
 import { authenticateToken, AuthenticatedRequest } from '../auth.js';
-import { query, queryOne } from '../../db/database.js';
+import { query, queryOne, execute } from '../../db/database.js';
 import { calculateStudentAnalytics } from '../analytics.js';
 
 export const erpRoutes = Router();
 
-// 1. Hall Ticket / Examination Eligibility Service
+// ----------------------------------------------------
+// 1. ACADEMIC REGISTRATION
+// ----------------------------------------------------
+erpRoutes.get('/registration/courses/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const registrations = await query(`
+      SELECT cr.*, s.code, s.name as subject_name, s.credits, f.name as faculty_name
+      FROM course_registrations cr
+      JOIN subjects s ON cr.subject_id = s.id
+      LEFT JOIN faculty f ON s.faculty_id = f.id
+      WHERE cr.student_id = ?
+      ORDER BY cr.registered_at DESC
+    `, [studentId]);
+
+    const availableCourses = await query(`
+      SELECT s.*, f.name as faculty_name 
+      FROM subjects s
+      LEFT JOIN faculty f ON s.faculty_id = f.id
+    `);
+
+    res.json({ registrations, availableCourses });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.post('/registration/register', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, subjectId, registrationType } = req.body;
+    if (!studentId || !subjectId || !registrationType) {
+      return res.status(400).json({ error: 'Missing required registration parameters.' });
+    }
+
+    const regId = `reg_${studentId}_${Date.now()}`;
+    await execute(`
+      INSERT OR REPLACE INTO course_registrations (id, student_id, subject_id, registration_type, academic_year, semester, status)
+      VALUES (?, ?, ?, ?, '2026-2027', 'Semester VI', 'APPROVED')
+    `, [regId, studentId, subjectId, registrationType]);
+
+    res.json({ success: true, message: `Successfully registered for course under ${registrationType} category.`, registrationId: regId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 2. ATTENDANCE REGISTER
+// ----------------------------------------------------
+erpRoutes.get('/attendance/register/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const records = await query(`
+      SELECT a.*, s.code, s.name as subject_name, s.credits
+      FROM attendance a
+      JOIN subjects s ON a.subject_id = s.id
+      WHERE a.student_id = ?
+    `, [studentId]);
+
+    const shortageRecords = records.filter((r: any) => r.percentage < 75.0);
+    const avgPercentage = records.length ? (records.reduce((acc: number, r: any) => acc + r.percentage, 0) / records.length) : 0;
+
+    res.json({
+      records,
+      summary: {
+        totalSubjects: records.length,
+        averagePercentage: Math.round(avgPercentage * 10) / 10,
+        shortageCount: shortageRecords.length,
+        isEligible: avgPercentage >= 75.0,
+        condonationEligible: avgPercentage >= 65.0 && avgPercentage < 75.0
+      },
+      shortageRecords
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 3. CAREER CHOICE & PREFERENCES
+// ----------------------------------------------------
+erpRoutes.get('/career/preferences/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const prefs = await queryOne('SELECT * FROM career_preferences WHERE student_id = ?', [studentId]);
+    res.json(prefs || {
+      primary_domain: 'Software Engineering',
+      secondary_domain: 'Cloud & AI',
+      target_role: 'Software Development Engineer',
+      preferred_location: 'Hyderabad / Bengaluru',
+      higher_studies_intent: 'Industry First',
+      assessment_score: 85,
+      recommendations: 'Recommended to focus on Data Structures, System Design and Cloud Microservices.'
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.post('/career/preferences', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, primaryDomain, secondaryDomain, targetRole, preferredLocation, higherStudiesIntent } = req.body;
+    const id = `cp_${studentId}`;
+    await execute(`
+      INSERT OR REPLACE INTO career_preferences 
+      (id, student_id, primary_domain, secondary_domain, target_role, preferred_location, higher_studies_intent, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `, [id, studentId, primaryDomain, secondaryDomain, targetRole, preferredLocation, higherStudiesIntent]);
+
+    res.json({ success: true, message: 'Career preferences saved successfully.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 4. COURSES: MATERIALS, HANDOUTS & FEEDBACK
+// ----------------------------------------------------
+erpRoutes.get('/courses/materials', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const subjectId = req.query.subjectId as string;
+    let sql = `
+      SELECT cm.*, s.code, s.name as subject_name 
+      FROM course_materials cm
+      JOIN subjects s ON cm.subject_id = s.id
+    `;
+    const params: any[] = [];
+    if (subjectId) {
+      sql += ' WHERE cm.subject_id = ?';
+      params.push(subjectId);
+    }
+    sql += ' ORDER BY cm.unit_number ASC, cm.uploaded_at DESC';
+    const materials = await query(sql, params);
+    res.json({ materials });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.post('/courses/feedback', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, subjectId, clarityRating, paceRating, engagementRating, comments } = req.body;
+    const id = `fb_${studentId}_${Date.now()}`;
+    await execute(`
+      INSERT INTO session_feedbacks (id, student_id, subject_id, clarity_rating, pace_rating, engagement_rating, comments)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [id, studentId, subjectId, clarityRating, paceRating, engagementRating, comments]);
+
+    res.json({ success: true, message: 'Lecture session feedback recorded.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 5. CRT (CAMPUS RECRUITMENT TRAINING)
+// ----------------------------------------------------
+erpRoutes.get('/crt/progress/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const trainings = await query('SELECT * FROM crt_training WHERE student_id = ? ORDER BY date DESC', [studentId]);
+    res.json({
+      trainings,
+      summary: {
+        totalModules: trainings.length,
+        averageAptitude: 90.5,
+        codingProficiency: 'Level 4 (Advanced)',
+        mockInterviewStatus: 'Cleared (Recommended for Tier-1 Companies)'
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 6. COUNSELLING DIARY & MENTOR APPOINTMENTS
+// ----------------------------------------------------
+erpRoutes.get('/counselling/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const appointments = await query(`
+      SELECT ca.*, f.name as faculty_name, f.department, f.designation
+      FROM counselling_appointments ca
+      JOIN faculty f ON ca.faculty_id = f.id
+      WHERE ca.student_id = ?
+      ORDER BY ca.appointment_date DESC
+    `, [studentId]);
+
+    const mentor = await queryOne(`
+      SELECT f.*, u.email, u.phone 
+      FROM students s
+      JOIN faculty f ON s.mentor_faculty_id = f.id
+      JOIN users u ON f.user_id = u.id
+      WHERE s.id = ?
+    `, [studentId]);
+
+    res.json({ appointments, mentor });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.post('/counselling/schedule', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, facultyId, appointmentDate, purpose } = req.body;
+    const id = `apt_${studentId}_${Date.now()}`;
+    await execute(`
+      INSERT INTO counselling_appointments (id, student_id, faculty_id, appointment_date, purpose, status)
+      VALUES (?, ?, ?, ?, ?, 'SCHEDULED')
+    `, [id, studentId, facultyId, appointmentDate, purpose]);
+
+    res.json({ success: true, message: 'Proctorial mentoring appointment scheduled.', appointmentId: id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 7. CLUBS, SIL POINTS & ACTIVITIES
+// ----------------------------------------------------
+erpRoutes.get('/clubs', authenticateToken, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const clubs = await query('SELECT * FROM clubs');
+    const events = await query(`
+      SELECT ce.*, c.name as club_name 
+      FROM club_events ce
+      JOIN clubs c ON ce.club_id = c.id
+      ORDER BY ce.date ASC
+    `);
+    res.json({ clubs, events });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.get('/clubs/membership/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const memberships = await query(`
+      SELECT cm.*, c.name as club_name, c.category, c.lead_faculty
+      FROM club_memberships cm
+      JOIN clubs c ON cm.club_id = c.id
+      WHERE cm.student_id = ?
+    `, [studentId]);
+
+    const totalSil = memberships.reduce((acc: number, m: any) => acc + (m.sil_points || 0), 0);
+    res.json({ memberships, totalSil, requiredSil: 80, isSilEligible: totalSil >= 80 });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 8. FEE PAYMENTS & STRUCTURE
+// ----------------------------------------------------
+erpRoutes.get('/fees/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const structure = await query('SELECT * FROM fee_structures ORDER BY amount DESC');
+    const payments = await query('SELECT * FROM fee_payments WHERE student_id = ? ORDER BY paid_at DESC', [studentId]);
+
+    const totalBilled = structure.reduce((acc: number, f: any) => acc + f.amount, 0);
+    const totalPaid = payments.reduce((acc: number, p: any) => acc + p.amount, 0);
+    const dues = Math.max(0, totalBilled - totalPaid);
+
+    res.json({
+      structure,
+      payments,
+      summary: {
+        totalBilled,
+        totalPaid,
+        dues,
+        isCleared: dues === 0
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.post('/fees/pay', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, feeType, amount, paymentMode } = req.body;
+    const payId = `fp_${studentId}_${Date.now()}`;
+    const txnRef = `TXN-${Math.floor(100000000 + Math.random() * 900000000)}`;
+    const recNum = `REC-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    await execute(`
+      INSERT INTO fee_payments (id, student_id, fee_type, amount, payment_mode, transaction_ref, status, receipt_number)
+      VALUES (?, ?, ?, ?, ?, ?, 'PAID', ?)
+    `, [payId, studentId, feeType, amount, paymentMode || 'ONLINE_UPI', txnRef, recNum]);
+
+    res.json({ success: true, message: 'Fee payment receipt generated successfully.', receiptNumber: recNum, transactionRef: txnRef });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 9. HOSTEL MANAGEMENT
+// ----------------------------------------------------
+erpRoutes.get('/hostel/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const allocation = await queryOne('SELECT * FROM hostel_allocations WHERE student_id = ?', [studentId]);
+    const complaints = await query('SELECT * FROM hostel_complaints WHERE student_id = ? ORDER BY created_at DESC', [studentId]);
+    res.json({ allocation, complaints });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.post('/hostel/complaint', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, roomNumber, issueType, description, priority } = req.body;
+    const id = `hc_${Date.now()}`;
+    await execute(`
+      INSERT INTO hostel_complaints (id, student_id, room_number, issue_type, description, priority, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'OPEN')
+    `, [id, studentId, roomNumber, issueType, description, priority || 'MEDIUM']);
+
+    res.json({ success: true, message: 'Hostel maintenance ticket logged.', complaintId: id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 10. LIBRARY MANAGEMENT
+// ----------------------------------------------------
+erpRoutes.get('/library/records/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const search = (req.query.search as string || '').toLowerCase().trim();
+
+    let bookSql = 'SELECT * FROM library_books';
+    const params: any[] = [];
+    if (search) {
+      bookSql += ' WHERE LOWER(title) LIKE ? OR LOWER(author) LIKE ? OR LOWER(category) LIKE ?';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    const books = await query(bookSql, params);
+
+    const transactions = await query(`
+      SELECT lt.*, lb.title, lb.author, lb.category, lb.isbn
+      FROM library_transactions lt
+      JOIN library_books lb ON lt.book_id = lb.id
+      WHERE lt.student_id = ?
+      ORDER BY lt.issue_date DESC
+    `, [studentId]);
+
+    res.json({ books, transactions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 11. NODUE CLEARANCE
+// ----------------------------------------------------
+erpRoutes.get('/nodue/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const clearance = await queryOne('SELECT * FROM no_due_clearance WHERE student_id = ?', [studentId]);
+    res.json(clearance || {
+      department_status: 'CLEARED',
+      library_status: 'CLEARED',
+      hostel_status: 'CLEARED',
+      accounts_status: 'CLEARED',
+      laboratory_status: 'CLEARED',
+      overall_status: 'APPROVED',
+      remarks: 'All institutional departments cleared for certificate dispatch.'
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 12. REGISTRAR OFFICE DOCUMENT REQUESTS
+// ----------------------------------------------------
+erpRoutes.get('/documents/requests/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId } = req.params;
+    const requests = await query('SELECT * FROM document_requests WHERE student_id = ? ORDER BY created_at DESC', [studentId]);
+    res.json({ requests });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+erpRoutes.post('/documents/request', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, documentType, purpose, copies } = req.body;
+    const refNum = `DOC-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+    const id = `dr_${Date.now()}`;
+    const estDelivery = new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    await execute(`
+      INSERT INTO document_requests (id, student_id, document_type, purpose, copies, status, reference_number, estimated_delivery)
+      VALUES (?, ?, ?, ?, ?, 'PROCESSING', ?, ?)
+    `, [id, studentId, documentType, purpose, copies || 1, refNum, estDelivery]);
+
+    res.json({ success: true, message: 'Registrar document application filed.', referenceNumber: refNum, estimatedDelivery: estDelivery });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// 13. HALL TICKET & EXAM ELIGIBILITY
+// ----------------------------------------------------
 erpRoutes.get('/hall-ticket/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
-  const analytics = await calculateStudentAnalytics(studentId);
+  try {
+    const { studentId } = req.params;
+    const analytics = await calculateStudentAnalytics(studentId);
 
-  if (!analytics) {
-    return res.status(404).json({ error: 'Student record not found.' });
-  }
-
-  const isEligible = analytics.attendanceAverage >= 75.0;
-  const isCondonable = analytics.attendanceAverage >= 65.0 && analytics.attendanceAverage < 75.0;
-
-  let debarmentStatus = 'ELIGIBLE';
-  let debarmentRemarks = 'Approved for all registered course examinations.';
-
-  if (!isEligible) {
-    if (isCondonable) {
-      debarmentStatus = 'CONDONATION_REQUIRED';
-      debarmentRemarks = 'Attendance is between 65% and 75%. Medical/Condonation committee approval and fee receipt required.';
-    } else {
-      debarmentStatus = 'DEBARRED';
-      debarmentRemarks = 'Attendance is below 65%. Debarred from End-Semester Examination per University Academic Regulations.';
+    if (!analytics) {
+      return res.status(404).json({ error: 'Student record not found.' });
     }
-  }
 
-  const examSchedule = [
-    { code: 'CS301', subject: 'Advanced Data Structures & Algorithms', date: '2026-11-16', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 304, Turing Block' },
-    { code: 'CS302', subject: 'Database Management Systems & Cloud DBs', date: '2026-11-18', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 304, Turing Block' },
-    { code: 'CS303', subject: 'Operating Systems & Concurrency', date: '2026-11-20', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 306, Turing Block' },
-    { code: 'CS304', subject: 'Computer Networks & Internet Protocols', date: '2026-11-23', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 306, Turing Block' },
-    { code: 'CS305', subject: 'Machine Learning & Intelligent Systems', date: '2026-11-25', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 308, Turing Block' }
-  ];
+    const isEligible = analytics.attendanceAverage >= 75.0;
+    const isCondonable = analytics.attendanceAverage >= 65.0 && analytics.attendanceAverage < 75.0;
 
-  return res.json({
-    institution: 'Apex Institute of Technology & Engineering (Autonomous)',
-    accreditation: 'Affiliated to State Technological University · NAAC A++ Accredited',
-    academicYear: '2026–2027',
-    semester: 'Semester 5 (B.Tech CSE)',
-    examinationName: 'End-Semester Regular Examinations — November 2026',
-    hallTicketNumber: `HT2026-${analytics.rollNumber}`,
-    studentName: analytics.name,
-    rollNumber: analytics.rollNumber,
-    section: analytics.section,
-    batch: analytics.batch,
-    department: 'Computer Science & Engineering',
-    examCenter: 'Main Campus Examination Complex · Turing Block Center 102',
-    cumulativeAttendance: analytics.attendanceAverage,
-    debarmentStatus,
-    debarmentRemarks,
-    isEligible,
-    examSchedule,
-    generatedAt: new Date().toISOString(),
-    controllerOfExaminations: 'Dr. V. R. Shastri, Ph.D.'
-  });
-});
+    let debarmentStatus = 'ELIGIBLE';
+    let debarmentRemarks = 'Approved for all registered course examinations.';
 
-// 2. Official Provisional Grade Card / Transcript Service
-erpRoutes.get('/grade-card/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
-  const analytics = await calculateStudentAnalytics(studentId);
-
-  if (!analytics) {
-    return res.status(404).json({ error: 'Student record not found.' });
-  }
-
-  const semesterHistory = [
-    { sem: 'Semester 1', credits: 21, sgpa: 8.80, status: 'PASSED - FIRST CLASS WITH DISTINCTION' },
-    { sem: 'Semester 2', credits: 22, sgpa: 8.95, status: 'PASSED - FIRST CLASS WITH DISTINCTION' },
-    { sem: 'Semester 3', credits: 23, sgpa: 8.70, status: 'PASSED - FIRST CLASS WITH DISTINCTION' },
-    { sem: 'Semester 4', credits: 24, sgpa: analytics.comparisons.prevSemesterGpa, status: 'PASSED - FIRST CLASS' },
-    { sem: 'Semester 5 (Current)', credits: 18, sgpa: analytics.currentGpa, status: 'IN PROGRESS (CIE EVALUATED)' }
-  ];
-
-  const totalCredits = semesterHistory.reduce((acc, s) => acc + s.credits, 0);
-  const totalWeight = semesterHistory.reduce((acc, s) => acc + s.credits * s.sgpa, 0);
-  const cgpa = (totalWeight / totalCredits).toFixed(2);
-
-  return res.json({
-    institution: 'Apex Institute of Technology & Engineering',
-    degree: 'Bachelor of Technology (B.Tech)',
-    branch: 'Computer Science & Engineering',
-    rollNumber: analytics.rollNumber,
-    studentName: analytics.name,
-    cgpa,
-    currentSgpa: analytics.currentGpa.toFixed(2),
-    totalCreditsEarned: totalCredits,
-    currentSubjects: analytics.subjects,
-    semesterHistory,
-    evaluationScale: '10.0 Grading Scale (Absolute UGC Standard)'
-  });
-});
-
-// 3. Weekly Lecture & Lab Timetable Service
-erpRoutes.get('/timetable', authenticateToken, async (_req: AuthenticatedRequest, res: Response) => {
-  const weeklyTimetable = [
-    {
-      day: 'Monday',
-      periods: [
-        { time: '09:00 - 10:00', code: 'CS301', subject: 'Data Structures & Algorithms', faculty: 'Dr. Pratusha Mam', room: 'LH-401' },
-        { time: '10:05 - 11:05', code: 'CS302', subject: 'Database Management Systems', faculty: 'Prof. K. Ramanathan', room: 'LH-401' },
-        { time: '11:15 - 12:15', code: 'CS304', subject: 'Computer Networks', faculty: 'Dr. A. V. Suresh', room: 'LH-401' },
-        { time: '01:15 - 03:15', code: 'CS305L', subject: 'Machine Learning Lab (Batch A)', faculty: 'Dr. Pratusha Mam', room: 'Lab 4' }
-      ]
-    },
-    {
-      day: 'Tuesday',
-      periods: [
-        { time: '09:00 - 10:00', code: 'CS303', subject: 'Operating Systems', faculty: 'Prof. K. Ramanathan', room: 'LH-401' },
-        { time: '10:05 - 11:05', code: 'CS305', subject: 'Machine Learning Systems', faculty: 'Dr. Pratusha Mam', room: 'LH-401' },
-        { time: '11:15 - 01:15', code: 'CS302L', subject: 'Cloud Database Lab (Batch A)', faculty: 'Prof. K. Ramanathan', room: 'Lab 2' },
-        { time: '02:00 - 03:00', code: 'MENTOR', subject: 'Proctorial Mentoring & Guidance Hour', faculty: 'Dr. Pratusha Mam', room: 'Room 412' }
-      ]
-    },
-    {
-      day: 'Wednesday',
-      periods: [
-        { time: '09:00 - 10:00', code: 'CS301', subject: 'Data Structures & Algorithms', faculty: 'Dr. Pratusha Mam', room: 'LH-401' },
-        { time: '10:05 - 11:05', code: 'CS304', subject: 'Computer Networks', faculty: 'Dr. A. V. Suresh', room: 'LH-401' },
-        { time: '11:15 - 12:15', code: 'CS303', subject: 'Operating Systems', faculty: 'Prof. K. Ramanathan', room: 'LH-401' },
-        { time: '01:15 - 03:15', code: 'CAPSTONE', subject: 'Engineering Capstone Project Lab', faculty: 'Faculty Guides', room: 'Project Hub' }
-      ]
-    },
-    {
-      day: 'Thursday',
-      periods: [
-        { time: '09:00 - 10:00', code: 'CS305', subject: 'Machine Learning Systems', faculty: 'Dr. Pratusha Mam', room: 'LH-401' },
-        { time: '10:05 - 11:05', code: 'CS302', subject: 'Database Management Systems', faculty: 'Prof. K. Ramanathan', room: 'LH-401' },
-        { time: '11:15 - 01:15', code: 'CS303L', subject: 'OS & Systems Programming Lab', faculty: 'Prof. K. Ramanathan', room: 'Lab 3' },
-        { time: '02:00 - 04:00', code: 'LIBRARY', subject: 'Research Reference & Self-Study', faculty: 'Library Faculty', room: 'Central Library' }
-      ]
-    },
-    {
-      day: 'Friday',
-      periods: [
-        { time: '09:00 - 10:00', code: 'CS304', subject: 'Computer Networks', faculty: 'Dr. A. V. Suresh', room: 'LH-401' },
-        { time: '10:05 - 11:05', code: 'CS301', subject: 'Data Structures & Algorithms', faculty: 'Dr. Pratusha Mam', room: 'LH-401' },
-        { time: '11:15 - 12:15', code: 'CS303', subject: 'Operating Systems', faculty: 'Prof. K. Ramanathan', room: 'LH-401' },
-        { time: '01:15 - 03:00', code: 'SEMINAR', subject: 'Technical Seminar & Coding Practice', faculty: 'CSE Faculty', room: 'Seminar Hall B' }
-      ]
+    if (!isEligible) {
+      if (isCondonable) {
+        debarmentStatus = 'CONDONATION_REQUIRED';
+        debarmentRemarks = 'Attendance is between 65% and 75%. Condonation committee approval and fee receipt required.';
+      } else {
+        debarmentStatus = 'DEBARRED';
+        debarmentRemarks = 'Attendance is below 65%. Debarred from End-Semester Examination per Academic Regulations.';
+      }
     }
-  ];
 
-  return res.json({ timetable: weeklyTimetable });
-});
+    const examSchedule = [
+      { code: 'CS301', subject: 'Advanced Data Structures & Algorithms', date: '2026-11-16', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 304, Turing Block' },
+      { code: 'CS302', subject: 'Database Management Systems & Cloud DBs', date: '2026-11-18', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 304, Turing Block' },
+      { code: 'CS303', subject: 'Operating Systems & Concurrency', date: '2026-11-20', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 306, Turing Block' },
+      { code: 'CS304', subject: 'Computer Networks & Internet Protocols', date: '2026-11-23', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 306, Turing Block' },
+      { code: 'CS305', subject: 'Machine Learning & Intelligent Systems', date: '2026-11-25', time: '10:00 AM – 01:00 PM', hall: 'Exam Hall 308, Turing Block' }
+    ];
 
-// 4. Campus Announcements & ERP Circulars
-erpRoutes.get('/circulars', authenticateToken, async (_req: AuthenticatedRequest, res: Response) => {
-  const circulars = [
-    {
-      id: 'circ_1',
-      title: 'Mandatory 75% Attendance Requirement for Semester 5 Exam Hall Ticket',
-      date: '2026-09-20',
-      category: 'EXAMINATIONS',
-      priority: 'HIGH',
-      author: 'Controller of Examinations',
-      content: 'All students are notified that per University Academic Regulations, minimum 75% physical attendance in every registered course is strictly required to download the November 2026 End-Semester Examination Hall Ticket.'
-    },
-    {
-      id: 'circ_2',
-      title: 'Mid-Term Assessment Marks Publication & Grievance Window',
-      date: '2026-09-18',
-      category: 'ACADEMICS',
-      priority: 'MEDIUM',
-      author: 'Dean Academics',
-      content: 'Mid-Term examination marks have been published on the EduPulse ERP portal. Students may submit re-verification requests through their faculty mentors by Sep 28.'
-    },
-    {
-      id: 'circ_3',
-      title: 'Engineering Capstone Project – 1 Phase Review Schedule',
-      date: '2026-09-15',
-      category: 'PROJECTS',
-      priority: 'MEDIUM',
-      author: 'Department of CSE',
-      content: 'First milestone reviews for Capstone Project – 1 (A.Y. 2026–2027) will be conducted by respective guides starting October 5. Submit literature review and system architecture drafts.'
-    },
-    {
-      id: 'circ_4',
-      title: 'Remedial Problem-Solving Clinics (Data Structures & Networks)',
-      date: '2026-09-12',
-      category: 'STUDENT_SUPPORT',
-      priority: 'LOW',
-      author: 'CSE Academic Mentoring Cell',
-      content: 'Weekly remedial problem-solving sessions will be held every Wednesday at 4:00 PM in Room 412 for students flagged with declining marks in CS301 and CS304.'
-    }
-  ];
-
-  return res.json({ circulars });
-});
-
-// 5. University Fee & Scholarship Clearance Status
-erpRoutes.get('/fee-clearance/:studentId', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  const { studentId } = req.params;
-
-  return res.json({
-    studentId,
-    tuitionFeeStatus: 'CLEARED',
-    examinationFeeStatus: 'CLEARED',
-    libraryDues: 'NO DUES',
-    hostelDues: 'NOT APPLICABLE (DAY SCHOLAR)',
-    scholarshipCategory: 'Merit-Cum-Means State Technical Fellowship',
-    scholarshipSanctioned: '₹45,000 / Year',
-    hallTicketFinanceClearance: 'APPROVED'
-  });
+    res.json({
+      institution: 'Koneru Lakshmaiah Education Foundation (KL Deemed to be University)',
+      accreditation: 'NAAC A++ Accredited · Category 1 Autonomy · NIRF Top 30 Ranked',
+      academicYear: '2026–2027',
+      semester: 'Semester VI (B.Tech CSE)',
+      examinationName: 'Regular End-Semester Examinations — November 2026',
+      hallTicketNumber: `HT2026-${analytics.rollNumber}`,
+      studentName: analytics.name,
+      rollNumber: analytics.rollNumber,
+      section: analytics.section,
+      attendancePercentage: analytics.attendanceAverage,
+      debarmentStatus,
+      debarmentRemarks,
+      feeClearance: 'CLEARED',
+      examSchedule
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });

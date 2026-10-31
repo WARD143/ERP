@@ -5,6 +5,7 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { CommandPalette } from './components/common/CommandPalette';
 import { LoginPage } from './pages/public/LoginPage';
+import { UniversalErpModuleView } from './components/erp/UniversalErpModuleView';
 import { api } from './api/client';
 import { StudentAnalytics, RiskAssessment, Recommendation, ForecastResult, Alert } from './types';
 import { ArrowLeft, Home, Sparkles } from 'lucide-react';
@@ -109,7 +110,7 @@ const AppContent: React.FC = () => {
           <Sparkles className="w-5 h-5" />
         </div>
         <div className="text-xs font-semibold tracking-wider uppercase text-slate-400">
-          Initializing AKTERA Intelligence...
+          Initializing University ERP Platform...
         </div>
       </div>
     );
@@ -127,31 +128,22 @@ const AppContent: React.FC = () => {
   const unresolvedAlertCount = studentData?.alerts.filter(a => a.is_resolved === 0).length || 0;
 
   const homeTab = user.role === 'ADMIN' ? 'admin-dashboard' : user.role === 'FACULTY' ? 'faculty-dashboard' : user.role === 'PARENT' ? 'parent-dashboard' : 'student-dashboard';
-  const homeLabel = user.role === 'ADMIN' ? 'Admin Dashboard' : user.role === 'FACULTY' ? 'Faculty Dashboard' : user.role === 'PARENT' ? 'Parent Dashboard' : 'Overview Dashboard';
+  const homeLabel = user.role === 'ADMIN' ? 'Admin Dashboard' : user.role === 'FACULTY' ? 'Faculty Dashboard' : user.role === 'PARENT' ? 'Parent Dashboard' : 'Student Dashboard';
 
-  const tabLabels: Record<string, string> = {
-    'student-dashboard': 'Overview Dashboard',
-    'mentoring-portal': 'Proctorial Mentoring Desk',
-    'academic-performance': 'Academic Performance & Marks',
-    'subject-analytics': 'Subject-Wise Analytics',
-    'performance-trends': 'Performance Trends',
-    'weak-areas': 'Weak Areas Detection',
-    'risk-status': 'Risk Assessment & Explainability',
-    'student-alerts': 'Early Warning Alerts',
-    'recommendations': 'Personalized Support & AI Action Plan',
-    'forecast': 'Performance Forecasting',
-    'what-if': 'What-If Simulation Sandbox',
-    'faculty-dashboard': 'Faculty Dashboard',
-    'student-list': 'Student Directory & Filters',
-    'faculty-subjects': 'Subject-Wise Class View',
-    'risk-radar': 'Risk & Early Warnings Radar',
-    'faculty-alerts': 'Critical Alerts Queue',
-    'interventions': 'Interventions & Counseling Manager',
-    'admin-dashboard': 'Administrator Dashboard',
-    'cohort-analytics': 'Cohort Performance Analytics',
-    'risk-config': 'Risk Engine Thresholds',
-    'data-management': 'Data Input & CSV Sync'
-  };
+  const isBuiltinStudentModule = [
+    'student-dashboard',
+    'mentoring-portal',
+    'academic-performance',
+    'subject-analytics',
+    'performance-trends',
+    'weak-areas',
+    'risk-status',
+    'student-alerts',
+    'recommendations',
+    'forecast',
+    'what-if',
+    'uci-dataset'
+  ].includes(currentTab);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors">
@@ -190,7 +182,9 @@ const AppContent: React.FC = () => {
                     {homeLabel}
                   </button>
                   <span className="text-slate-300 dark:text-slate-700">/</span>
-                  <span className="text-slate-900 dark:text-slate-200 font-bold">{tabLabels[currentTab] || currentTab}</span>
+                  <span className="text-slate-900 dark:text-slate-200 font-bold capitalize">
+                    {currentTab.replace('-', ' ')}
+                  </span>
                 </div>
               </div>
 
@@ -211,68 +205,78 @@ const AppContent: React.FC = () => {
             <UCIDatasetExplorer />
           )}
 
-          {/* STUDENT VIEWS */}
+          {/* STUDENT PORTAL VIEWS */}
           {user.role === 'STUDENT' && currentTab !== 'uci-dataset' && (
             <>
-              {studentLoading || !studentData ? (
-                <div className="py-20 text-center text-xs font-semibold uppercase tracking-wider text-slate-400 animate-pulse">
-                  Loading academic performance metrics...
-                </div>
+              {/* Check if current tab is one of the 20 new KL University ERP modules */}
+              {!isBuiltinStudentModule ? (
+                <UniversalErpModuleView
+                  tabId={currentTab}
+                  studentId={user.studentId || user.id || 'stu_s001'}
+                />
               ) : (
                 <>
-                  {currentTab === 'student-dashboard' && (
-                    <StudentDashboard
-                      analytics={studentData.analytics}
-                      risk={studentData.risk}
-                      recommendations={studentData.recommendations}
-                      forecast={studentData.forecast}
-                      alerts={studentData.alerts}
-                      onNavigateTab={setCurrentTab}
-                    />
-                  )}
-                  {currentTab === 'mentoring-portal' && (
-                    <StudentMentoringPortal />
-                  )}
-                  {currentTab === 'academic-performance' && (
-                    <AcademicPerformance analytics={studentData.analytics} />
-                  )}
-                  {currentTab === 'subject-analytics' && (
-                    <SubjectAnalytics analytics={studentData.analytics} />
-                  )}
-                  {currentTab === 'performance-trends' && (
-                    <PerformanceTrends analytics={studentData.analytics} forecast={studentData.forecast} />
-                  )}
-                  {currentTab === 'weak-areas' && (
-                    <WeakAreas analytics={studentData.analytics} onNavigateTab={setCurrentTab} />
-                  )}
-                  {currentTab === 'risk-status' && (
-                    <RiskStatus analytics={studentData.analytics} risk={studentData.risk} onNavigateTab={setCurrentTab} />
-                  )}
-                  {currentTab === 'student-alerts' && (
-                    <StudentAlerts alerts={studentData.alerts} />
-                  )}
-                  {currentTab === 'recommendations' && (
-                    <PersonalizedRecommendations
-                      recommendations={studentData.recommendations}
-                      analytics={studentData.analytics}
-                    />
-                  )}
-                  {currentTab === 'forecast' && (
-                    <PerformanceForecast
-                      forecast={studentData.forecast}
-                      analytics={studentData.analytics}
-                      onNavigateTab={setCurrentTab}
-                    />
-                  )}
-                  {currentTab === 'what-if' && (
-                    <WhatIfAnalysis analytics={studentData.analytics} />
+                  {studentLoading || !studentData ? (
+                    <div className="py-20 text-center text-xs font-semibold uppercase tracking-wider text-slate-400 animate-pulse">
+                      Loading academic performance metrics...
+                    </div>
+                  ) : (
+                    <>
+                      {currentTab === 'student-dashboard' && (
+                        <StudentDashboard
+                          analytics={studentData.analytics}
+                          risk={studentData.risk}
+                          recommendations={studentData.recommendations}
+                          forecast={studentData.forecast}
+                          alerts={studentData.alerts}
+                          onNavigateTab={setCurrentTab}
+                        />
+                      )}
+                      {currentTab === 'mentoring-portal' && (
+                        <StudentMentoringPortal />
+                      )}
+                      {currentTab === 'academic-performance' && (
+                        <AcademicPerformance analytics={studentData.analytics} />
+                      )}
+                      {currentTab === 'subject-analytics' && (
+                        <SubjectAnalytics analytics={studentData.analytics} />
+                      )}
+                      {currentTab === 'performance-trends' && (
+                        <PerformanceTrends analytics={studentData.analytics} forecast={studentData.forecast} />
+                      )}
+                      {currentTab === 'weak-areas' && (
+                        <WeakAreas analytics={studentData.analytics} onNavigateTab={setCurrentTab} />
+                      )}
+                      {currentTab === 'risk-status' && (
+                        <RiskStatus analytics={studentData.analytics} risk={studentData.risk} onNavigateTab={setCurrentTab} />
+                      )}
+                      {currentTab === 'student-alerts' && (
+                        <StudentAlerts alerts={studentData.alerts} />
+                      )}
+                      {currentTab === 'recommendations' && (
+                        <PersonalizedRecommendations
+                          recommendations={studentData.recommendations}
+                          analytics={studentData.analytics}
+                        />
+                      )}
+                      {currentTab === 'forecast' && (
+                        <PerformanceForecast
+                          forecast={studentData.forecast}
+                          analytics={studentData.analytics}
+                          onNavigateTab={setCurrentTab}
+                        />
+                      )}
+                      {currentTab === 'what-if' && (
+                        <WhatIfAnalysis analytics={studentData.analytics} />
+                      )}
+                    </>
                   )}
                 </>
               )}
             </>
           )}
 
-          {/* FACULTY VIEWS */}
+          {/* FACULTY PORTAL VIEWS */}
           {user.role === 'FACULTY' && (
             <>
               {currentTab === 'faculty-dashboard' && (
@@ -302,7 +306,7 @@ const AppContent: React.FC = () => {
             </>
           )}
 
-          {/* ADMIN VIEWS */}
+          {/* ADMIN PORTAL VIEWS */}
           {user.role === 'ADMIN' && (
             <>
               {currentTab === 'admin-dashboard' && (
@@ -320,7 +324,7 @@ const AppContent: React.FC = () => {
             </>
           )}
 
-          {/* PARENT VIEWS */}
+          {/* PARENT PORTAL VIEWS */}
           {user.role === 'PARENT' && (
             <>
               {currentTab === 'parent-dashboard' && (
