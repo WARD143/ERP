@@ -80,3 +80,4 @@ a_res = login('admin@cse.college.edu', 'admin123')
 print('Admin Login:', a_res['user']['name'], '| Role:', a_res['user']['role'])
 
 print('\n=== ALL 5 AUTOMATED VERIFICATION CHECKS PASSED ===')
+

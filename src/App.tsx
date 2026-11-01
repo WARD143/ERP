@@ -228,7 +228,7 @@ const AppContent: React.FC = () => {
               {!isBuiltinStudentModule ? (
                 <UniversalErpModuleView
                   tabId={currentTab}
-                  studentId={user.studentId || user.id || 'stu_s001'}
+                  studentId={user.studentId || user.id}
                 />
               ) : (
                 <>
