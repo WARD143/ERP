@@ -24,8 +24,8 @@ type RoleTab = 'STUDENT' | 'FACULTY' | 'ADMIN';
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const [roleTab, setRoleTab] = useState<RoleTab>('STUDENT');
-  const [identifier, setIdentifier] = useState('S001');
-  const [password, setPassword] = useState('student123');
+  const [identifier, setIdentifier] = useState('2420030533');
+  const [password, setPassword] = useState('2420030533');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,8 +34,8 @@ export const LoginPage: React.FC = () => {
     setRoleTab(tab);
     setError('');
     if (tab === 'STUDENT') {
-      setIdentifier('S001');
-      setPassword('student123');
+      setIdentifier('2420030533');
+      setPassword('2420030533');
     } else if (tab === 'FACULTY') {
       setIdentifier('EMP-CSE-042');
       setPassword('guide123');
@@ -148,7 +148,7 @@ export const LoginPage: React.FC = () => {
                   required
                   placeholder={
                     roleTab === 'STUDENT'
-                      ? 'S001, S005, S021 or 2420030520'
+                      ? 'Roll No: 2420030533, 2420030520, etc.'
                       : roleTab === 'FACULTY'
                       ? 'EMP-CSE-042'
                       : 'admin@cse.college.edu'
@@ -206,27 +206,27 @@ export const LoginPage: React.FC = () => {
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => { setIdentifier('S001'); setPassword('student123'); }}
+                  onClick={() => { setIdentifier('2420030533'); setPassword('2420030533'); }}
                   className="p-2.5 rounded-xl bg-slate-950/80 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-800 text-center transition-all cursor-pointer group"
                 >
-                  <div className="text-xs font-mono font-bold text-white group-hover:text-indigo-400">S001</div>
-                  <div className="text-[10px] text-slate-400">Dataset Row 1</div>
+                  <div className="text-xs font-mono font-bold text-white group-hover:text-indigo-400">2420030533</div>
+                  <div className="text-[10px] text-slate-400">Rahul Verma</div>
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setIdentifier('S005'); setPassword('student123'); }}
+                  onClick={() => { setIdentifier('2420030520'); setPassword('2420030520'); }}
                   className="p-2.5 rounded-xl bg-slate-950/80 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-800 text-center transition-all cursor-pointer group"
                 >
-                  <div className="text-xs font-mono font-bold text-emerald-400 group-hover:text-emerald-300">S005</div>
-                  <div className="text-[10px] text-slate-400">40.3 Marks</div>
+                  <div className="text-xs font-mono font-bold text-emerald-400 group-hover:text-emerald-300">2420030520</div>
+                  <div className="text-[10px] text-slate-400">P. TejAditya</div>
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setIdentifier('2420030520'); setPassword('student123'); }}
+                  onClick={() => { setIdentifier('2420030512'); setPassword('2420030512'); }}
                   className="p-2.5 rounded-xl bg-slate-950/80 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-800 text-center transition-all cursor-pointer group"
                 >
-                  <div className="text-xs font-mono font-bold text-indigo-400 group-hover:text-indigo-300">TejAditya</div>
-                  <div className="text-[10px] text-slate-400">GPA 9.60</div>
+                  <div className="text-xs font-mono font-bold text-indigo-400 group-hover:text-indigo-300">2420030512</div>
+                  <div className="text-[10px] text-slate-400">G. Akshath</div>
                 </button>
               </div>
             )}

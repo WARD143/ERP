@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query, queryOne } from '../../db/database.js';
+import { query, queryOne, execute } from '../../db/database.js';
 import { hashPassword, seedDatabase } from '../../db/seed.js';
 import { generateToken, authenticateToken, AuthenticatedRequest } from '../auth.js';
 import { evaluateAllStudentsRisk } from '../riskEngine.js';
@@ -88,13 +88,62 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     facultyId,
     parentId,
     employeeId: fixedEmployeeId,
-    rollNumber: user.roll_number
+    rollNumber: user.roll_number,
+    mustChangePassword: user.must_change_password === 1
   };
 
   const token = generateToken(authenticatedUser);
   return res.json({
     token,
     user: authenticatedUser
+  });
+});
+
+
+authRouter.post('/change-password', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required.' });
+  }
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res.status(400).json({ error: 'Current password, new password, and confirmation are required.' });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({ error: 'New password and confirmation do not match.' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
+  }
+
+  // Prevent setting password back to roll number
+  if (req.user.rollNumber && newPassword.trim().toLowerCase() === req.user.rollNumber.trim().toLowerCase()) {
+    return res.status(400).json({ error: 'New password cannot be identical to your university roll number.' });
+  }
+
+  // Verify current password against database
+  const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.user.id]);
+  if (!user) {
+    return res.status(404).json({ error: 'User record not found.' });
+  }
+
+  const incomingHash = hashPassword(currentPassword);
+  const isDefaultMatch = user.role === 'STUDENT' && currentPassword.trim().toLowerCase() === (user.roll_number || '').trim().toLowerCase();
+
+  if (user.password_hash !== incomingHash && !isDefaultMatch) {
+    return res.status(401).json({ error: 'Current password is incorrect.' });
+  }
+
+  // Update password in database and clear must_change_password flag
+  const newHash = hashPassword(newPassword);
+  await execute('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [newHash, user.id]);
+
+  return res.json({
+    success: true,
+    message: 'Password changed successfully. Your account is now fully secured.'
   });
 });
 

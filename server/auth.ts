@@ -25,6 +25,7 @@ export interface AuthenticatedUser {
   facultyId?: string;
   parentId?: string;
   rollNumber?: string;
+  mustChangePassword?: boolean;
 }
 
 export interface AuthenticatedRequest extends Request {
@@ -115,7 +116,8 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
     studentId,
     facultyId,
     parentId,
-    rollNumber: user.roll_number
+    rollNumber: user.roll_number,
+    mustChangePassword: user.must_change_password === 1
   };
 
   next();

@@ -568,5 +568,12 @@ export const api = {
 
   async getOuladImportStatus(): Promise<any> {
     return request('/api/oulad/import-status');
+  },
+
+  async changePassword(currentPassword: string, newPassword: string, confirmPassword: string): Promise<any> {
+    return request('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+    });
   }
 };

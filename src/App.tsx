@@ -39,6 +39,7 @@ import { RiskThresholdConfig } from './pages/admin/RiskThresholdConfig';
 import { DataManagement } from './pages/admin/DataManagement';
 import { UCIDatasetExplorer } from './pages/dataset/UCIDatasetExplorer';
 import { OuladAnalyticsDashboard } from './pages/dataset/OuladAnalyticsDashboard';
+import { ChangePasswordModal } from './components/auth/ChangePasswordModal';
 
 // Parent Pages
 import { ParentDashboard } from './pages/parent/ParentDashboard';
@@ -47,6 +48,15 @@ const AppContent: React.FC = () => {
   const { user, loading } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('student-dashboard');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [showPasswordChangeModal, setShowPasswordChangeModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (user?.mustChangePassword) {
+      setShowPasswordChangeModal(true);
+    } else {
+      setShowPasswordChangeModal(false);
+    }
+  }, [user?.mustChangePassword, user?.id]);
 
   // Student Loaded Data
   const [studentData, setStudentData] = useState<{
@@ -340,6 +350,19 @@ const AppContent: React.FC = () => {
           )}
         </main>
       </div>
+
+      {/* Mandatory First-Login Password Change Modal */}
+      {showPasswordChangeModal && user?.rollNumber && (
+        <ChangePasswordModal
+          rollNumber={user.rollNumber}
+          onPasswordChanged={() => {
+            setShowPasswordChangeModal(false);
+            if (user) {
+              user.mustChangePassword = false;
+            }
+          }}
+        />
+      )}
 
       {/* Global Command Palette (Ctrl+K) */}
       <CommandPalette
